@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
 
-/// Generate GTS schemas from Rust source code with #[struct_to_gts_schema] annotations
+/// Generate GTS schemas from Rust source code with `#[struct_to_gts_schema]` annotations
 pub fn generate_schemas_from_rust(source: &str, output: Option<&str>) -> Result<()> {
     println!("Scanning Rust source files in: {}", source);
 
@@ -24,19 +24,15 @@ pub fn generate_schemas_from_rust(source: &str, output: Option<&str>) -> Result<
     for entry in WalkDir::new(source_path)
         .follow_links(true)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(Result::ok)
     {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("rs") {
             files_scanned += 1;
             if let Ok(content) = fs::read_to_string(path) {
                 // Parse the file and extract schema information
-                let results = extract_and_generate_schemas(
-                    &content,
-                    output,
-                    &source_canonical,
-                    path,
-                )?;
+                let results =
+                    extract_and_generate_schemas(&content, output, &source_canonical, path)?;
                 schemas_generated += results.len();
                 for (schema_id, file_path) in results {
                     println!("  Generated schema: {} @ {}", schema_id, file_path);
@@ -50,14 +46,14 @@ pub fn generate_schemas_from_rust(source: &str, output: Option<&str>) -> Result<
     println!("  Schemas generated: {}", schemas_generated);
 
     if schemas_generated == 0 {
-        println!("\n- No schemas found. Make sure your structs are annotated with #[struct_to_gts_schema(...)]");
+        println!("\n- No schemas found. Make sure your structs are annotated with `#[struct_to_gts_schema(...)]`");
     }
 
     Ok(())
 }
 
 /// Extract schema metadata from Rust source and generate JSON files
-/// Returns a vector of (schema_id, file_path) tuples for each generated schema
+/// Returns a vector of (`schema_id`, `file_path`) tuples for each generated schema
 fn extract_and_generate_schemas(
     content: &str,
     output_override: Option<&str>,
@@ -66,8 +62,11 @@ fn extract_and_generate_schemas(
 ) -> Result<Vec<(String, String)>> {
     // Regex to find struct_to_gts_schema annotations
     let re = Regex::new(
-        r#"(?s)#\[struct_to_gts_schema\(\s*file_path\s*=\s*"([^"]+)"\s*,\s*schema_id\s*=\s*"([^"]+)"\s*,\s*description\s*=\s*"([^"]+)"\s*,\s*properties\s*=\s*"([^"]+)"\s*\)\]\s*(?:pub\s+)?struct\s+(\w+)\s*\{([^}]+)\}"#
+        r#"(?s)#\[struct_to_gts_schema\(\s*file_path\s*=\s*"([^"]+)"\s*,\s*schema_id\s*=\s*"([^"]+)"\s*,\s*description\s*=\s*"([^"]+)"\s*,\s*properties\s*=\s*"([^"]+)"\s*\)\]\s*(?:pub\s+)?struct\s+(\w+)\s*\{([^}]+)\}"#,
     )?;
+
+    // Pre-compile field regex outside the loop
+    let field_re = Regex::new(r"(?m)^\s*(?:pub\s+)?(\w+)\s*:\s*([^,]+?)(?:,|\s*$)")?;
 
     let mut results = Vec::new();
 
@@ -80,7 +79,10 @@ fn extract_and_generate_schemas(
         let struct_body = &cap[6];
 
         // Validate file_path ends with .json
-        if !file_path.ends_with(".json") {
+        if !std::path::Path::new(file_path)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        {
             bail!(
                 "Invalid file_path in {}:{} - file_path must end with '.json': {}",
                 source_file.display(),
@@ -124,10 +126,9 @@ fn extract_and_generate_schemas(
         }
 
         // Parse properties
-        let properties: Vec<&str> = properties_str.split(',').map(|s| s.trim()).collect();
+        let properties: Vec<&str> = properties_str.split(',').map(str::trim).collect();
 
         // Parse struct fields
-        let field_re = Regex::new(r"(?m)^\s*(?:pub\s+)?(\w+)\s*:\s*([^,]+?)(?:,|\s*$)")?;
         let mut field_types = HashMap::new();
 
         for field_cap in field_re.captures_iter(struct_body) {
@@ -137,7 +138,13 @@ fn extract_and_generate_schemas(
         }
 
         // Build JSON schema
-        let schema = build_json_schema(schema_id, struct_name, description, &properties, &field_types)?;
+        let schema = build_json_schema(
+            schema_id,
+            struct_name,
+            description,
+            &properties,
+            &field_types,
+        );
 
         // Create parent directories
         if let Some(parent) = output_path.parent() {
@@ -161,7 +168,7 @@ fn build_json_schema(
     description: &str,
     properties: &[&str],
     field_types: &HashMap<String, String>,
-) -> Result<serde_json::Value> {
+) -> serde_json::Value {
     use serde_json::json;
 
     let mut schema_properties = serde_json::Map::new();
@@ -176,10 +183,10 @@ fn build_json_schema(
                 prop_schema["format"] = json!(fmt);
             }
 
-            schema_properties.insert(prop.to_string(), prop_schema);
+            schema_properties.insert((*prop).to_string(), prop_schema);
 
             if is_required {
-                required.push(prop.to_string());
+                required.push((*prop).to_string());
             }
         }
     }
@@ -197,7 +204,7 @@ fn build_json_schema(
         schema["required"] = json!(required);
     }
 
-    Ok(schema)
+    schema
 }
 
 /// Convert Rust type string to JSON Schema type
@@ -218,8 +225,8 @@ fn rust_type_to_json_schema_type(rust_type: &str) -> (bool, &'static str, Option
 
     let (json_type, format) = match inner_type {
         "String" | "str" | "&str" => ("string", None),
-        "i8" | "i16" | "i32" | "i64" | "i128" | "isize" => ("integer", None),
-        "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => ("integer", None),
+        "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64" | "u128"
+        | "usize" => ("integer", None),
         "f32" | "f64" => ("number", None),
         "bool" => ("boolean", None),
         t if t.starts_with("Vec<") => ("array", None),

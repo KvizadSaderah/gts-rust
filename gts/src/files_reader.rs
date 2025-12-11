@@ -7,6 +7,7 @@ use crate::entities::{GtsConfig, GtsEntity, GtsFile};
 use crate::store::GtsReader;
 
 const EXCLUDE_LIST: &[&str] = &["node_modules", "dist", "build"];
+const VALID_EXTENSIONS: &[&str] = &[".json", ".jsonc", ".gts", ".yaml", ".yml"];
 
 pub struct GtsFileReader {
     paths: Vec<PathBuf>,
@@ -16,7 +17,7 @@ pub struct GtsFileReader {
 }
 
 impl GtsFileReader {
-    pub fn new(path: Vec<String>, cfg: Option<GtsConfig>) -> Self {
+    pub fn new(path: &[String], cfg: Option<GtsConfig>) -> Self {
         let paths = path
             .iter()
             .map(|p| PathBuf::from(shellexpand::tilde(p).to_string()))
@@ -31,7 +32,6 @@ impl GtsFileReader {
     }
 
     fn collect_files(&mut self) {
-        let valid_extensions = vec![".json", ".jsonc", ".gts", ".yaml", ".yml"];
         let mut seen = std::collections::HashSet::new();
         let mut collected = Vec::new();
 
@@ -41,7 +41,7 @@ impl GtsFileReader {
             if resolved_path.is_file() {
                 if let Some(ext) = resolved_path.extension() {
                     let ext_str = ext.to_string_lossy().to_lowercase();
-                    if valid_extensions.contains(&format!(".{}", ext_str).as_str()) {
+                    if VALID_EXTENSIONS.contains(&format!(".{}", ext_str).as_str()) {
                         let rp = resolved_path.to_string_lossy().to_string();
                         if !seen.contains(&rp) {
                             seen.insert(rp.clone());
@@ -51,33 +51,35 @@ impl GtsFileReader {
                     }
                 }
             } else if resolved_path.is_dir() {
-                for entry in WalkDir::new(&resolved_path).follow_links(true) {
-                    if let Ok(entry) = entry {
-                        let path = entry.path();
+                for entry in WalkDir::new(&resolved_path)
+                    .follow_links(true)
+                    .into_iter()
+                    .flatten()
+                {
+                    let path = entry.path();
 
-                        // Skip excluded directories
-                        if path.is_dir() {
-                            if let Some(name) = path.file_name() {
-                                if EXCLUDE_LIST.contains(&name.to_string_lossy().as_ref()) {
-                                    continue;
-                                }
+                    // Skip excluded directories
+                    if path.is_dir() {
+                        if let Some(name) = path.file_name() {
+                            if EXCLUDE_LIST.contains(&name.to_string_lossy().as_ref()) {
+                                continue;
                             }
                         }
+                    }
 
-                        if path.is_file() {
-                            if let Some(ext) = path.extension() {
-                                let ext_str = ext.to_string_lossy().to_lowercase();
-                                if valid_extensions.contains(&format!(".{}", ext_str).as_str()) {
-                                    let rp = path
-                                        .canonicalize()
-                                        .unwrap_or_else(|_| path.to_path_buf())
-                                        .to_string_lossy()
-                                        .to_string();
-                                    if !seen.contains(&rp) {
-                                        seen.insert(rp.clone());
-                                        tracing::debug!("- discovered file: {:?}", path);
-                                        collected.push(PathBuf::from(rp));
-                                    }
+                    if path.is_file() {
+                        if let Some(ext) = path.extension() {
+                            let ext_str = ext.to_string_lossy().to_lowercase();
+                            if VALID_EXTENSIONS.contains(&format!(".{}", ext_str).as_str()) {
+                                let rp = path
+                                    .canonicalize()
+                                    .unwrap_or_else(|_| path.to_path_buf())
+                                    .to_string_lossy()
+                                    .to_string();
+                                if !seen.contains(&rp) {
+                                    seen.insert(rp.clone());
+                                    tracing::debug!("- discovered file: {:?}", path);
+                                    collected.push(PathBuf::from(rp));
                                 }
                             }
                         }
@@ -89,14 +91,14 @@ impl GtsFileReader {
         self.files = collected;
     }
 
-    fn load_json_file(&self, file_path: &Path) -> Result<Value, Box<dyn std::error::Error>> {
+    fn load_json_file(file_path: &Path) -> Result<Value, Box<dyn std::error::Error>> {
         let content = fs::read_to_string(file_path)?;
 
         // Determine file type by extension
         let extension = file_path
             .extension()
             .and_then(|e| e.to_str())
-            .map(|e| e.to_lowercase())
+            .map(str::to_lowercase)
             .unwrap_or_default();
 
         let value: Value = match extension.as_str() {
@@ -117,7 +119,7 @@ impl GtsFileReader {
     fn process_file(&self, file_path: &Path) -> Vec<GtsEntity> {
         let mut entities = Vec::new();
 
-        match self.load_json_file(file_path) {
+        match Self::load_json_file(file_path) {
             Ok(content) => {
                 let json_file = GtsFile::new(
                     file_path.to_string_lossy().to_string(),
@@ -135,7 +137,7 @@ impl GtsFileReader {
                         let entity = GtsEntity::new(
                             Some(json_file.clone()),
                             Some(idx),
-                            item.clone(),
+                            item,
                             Some(&self.cfg),
                             None,
                             false,
@@ -143,11 +145,8 @@ impl GtsFileReader {
                             None,
                             None,
                         );
-                        if entity.gts_id.is_some() {
-                            tracing::debug!(
-                                "- discovered entity: {}",
-                                entity.gts_id.as_ref().unwrap().id
-                            );
+                        if let Some(ref gts_id) = entity.gts_id {
+                            tracing::debug!("- discovered entity: {}", gts_id.id);
                             entities.push(entity);
                         } else {
                             tracing::debug!(
@@ -160,7 +159,7 @@ impl GtsFileReader {
                     let entity = GtsEntity::new(
                         Some(json_file),
                         None,
-                        content.clone(),
+                        &content,
                         Some(&self.cfg),
                         None,
                         false,
@@ -168,11 +167,8 @@ impl GtsFileReader {
                         None,
                         None,
                     );
-                    if entity.gts_id.is_some() {
-                        tracing::debug!(
-                            "- discovered entity: {}",
-                            entity.gts_id.as_ref().unwrap().id
-                        );
+                    if let Some(ref gts_id) = entity.gts_id {
+                        tracing::debug!("- discovered entity: {}", gts_id.id);
                         entities.push(entity);
                     } else {
                         tracing::debug!(

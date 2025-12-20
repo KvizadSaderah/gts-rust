@@ -68,7 +68,11 @@ pub fn generate_schemas_from_rust(
         if should_exclude_path(path, exclude_patterns) {
             files_skipped += 1;
             if verbose > 0 {
-                println!("  Skipped: {} ({})", path.display(), SkipReason::ExcludePattern);
+                println!(
+                    "  Skipped: {} ({})",
+                    path.display(),
+                    SkipReason::ExcludePattern
+                );
             }
             continue;
         }
@@ -77,7 +81,11 @@ pub fn generate_schemas_from_rust(
         if is_in_auto_ignored_dir(path) {
             files_skipped += 1;
             if verbose > 0 {
-                println!("  Skipped: {} ({})", path.display(), SkipReason::AutoIgnoredDir);
+                println!(
+                    "  Skipped: {} ({})",
+                    path.display(),
+                    SkipReason::AutoIgnoredDir
+                );
             }
             continue;
         }
@@ -88,14 +96,17 @@ pub fn generate_schemas_from_rust(
             if has_ignore_directive(&content) {
                 files_skipped += 1;
                 if verbose > 0 {
-                    println!("  Skipped: {} ({})", path.display(), SkipReason::IgnoreDirective);
+                    println!(
+                        "  Skipped: {} ({})",
+                        path.display(),
+                        SkipReason::IgnoreDirective
+                    );
                 }
                 continue;
             }
 
             // Parse the file and extract schema information
-            let results =
-                extract_and_generate_schemas(&content, output, &source_canonical, path)?;
+            let results = extract_and_generate_schemas(&content, output, &source_canonical, path)?;
             schemas_generated += results.len();
             for (schema_id, file_path) in results {
                 println!("  Generated schema: {schema_id} @ {file_path}");
@@ -369,8 +380,14 @@ mod tests {
     #[test]
     fn test_matches_glob_pattern() {
         // Test simple patterns
-        assert!(matches_glob_pattern("src/tests/compile_fail/test.rs", "compile_fail"));
-        assert!(matches_glob_pattern("tests/compile_fail/test.rs", "compile_fail"));
+        assert!(matches_glob_pattern(
+            "src/tests/compile_fail/test.rs",
+            "compile_fail"
+        ));
+        assert!(matches_glob_pattern(
+            "tests/compile_fail/test.rs",
+            "compile_fail"
+        ));
 
         // Test wildcard patterns
         assert!(matches_glob_pattern("src/tests/foo.rs", "tests/*"));
@@ -382,7 +399,9 @@ mod tests {
 
     #[test]
     fn test_is_in_auto_ignored_dir() {
-        assert!(is_in_auto_ignored_dir(Path::new("tests/compile_fail/test.rs")));
+        assert!(is_in_auto_ignored_dir(Path::new(
+            "tests/compile_fail/test.rs"
+        )));
         assert!(is_in_auto_ignored_dir(Path::new("src/compile_fail/foo.rs")));
         assert!(!is_in_auto_ignored_dir(Path::new("src/models.rs")));
         assert!(!is_in_auto_ignored_dir(Path::new("tests/integration.rs")));
@@ -392,7 +411,9 @@ mod tests {
     fn test_has_ignore_directive() {
         assert!(has_ignore_directive("// gts:ignore\nuse foo::bar;"));
         assert!(has_ignore_directive("// GTS:IGNORE\nuse foo::bar;"));
-        assert!(has_ignore_directive("//! Module doc\n// gts:ignore\nuse foo::bar;"));
+        assert!(has_ignore_directive(
+            "//! Module doc\n// gts:ignore\nuse foo::bar;"
+        ));
         assert!(!has_ignore_directive("use foo::bar;\n// gts:ignore"));
         assert!(!has_ignore_directive("use foo::bar;"));
     }

@@ -675,7 +675,7 @@ mod tests {
 
         // Register a base schema
         let base_schema = json!({
-            "$id": "gts.test.base.v1.0~",
+            "$id": "gts://gts.test.base.v1.0~",
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
@@ -688,7 +688,7 @@ mod tests {
 
         // Register a derived schema
         let derived_schema = json!({
-            "$id": "gts.test.derived.v1.1~",
+            "$id": "gts://gts.test.derived.v1.1~",
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
@@ -850,7 +850,7 @@ mod tests {
 
         // Register old schema
         let old_schema = json!({
-            "$id": "gts.test.compat.v1.0~",
+            "$id": "gts://gts.test.compat.v1.0~",
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
@@ -864,7 +864,7 @@ mod tests {
 
         // Register new schema with expanded enum
         let new_schema = json!({
-            "$id": "gts.test.compat.v1.1~",
+            "$id": "gts://gts.test.compat.v1.1~",
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
@@ -2120,7 +2120,7 @@ mod tests {
         let mut ops = GtsOps::new(None, None, 0);
 
         let schema = json!({
-            "$id": "gts.vendor.package.namespace.type.v1.0~",
+            "$id": "gts://gts.vendor.package.namespace.type.v1.0~",
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object"
         });
@@ -2286,7 +2286,7 @@ mod tests {
         let mut ops = GtsOps::new(None, None, 0);
 
         let schema = json!({
-            "$id": "gts.vendor.package.namespace.type.v1.0~",
+            "$id": "gts://gts.vendor.package.namespace.type.v1.0~",
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
@@ -2349,7 +2349,7 @@ mod tests {
         let mut ops = GtsOps::new(None, None, 0);
 
         let schema1 = json!({
-            "$id": "gts.vendor.package.namespace.type.v1.0~",
+            "$id": "gts://gts.vendor.package.namespace.type.v1.0~",
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
@@ -2358,7 +2358,7 @@ mod tests {
         });
 
         let schema2 = json!({
-            "$id": "gts.vendor.package.namespace.type.v1.1~",
+            "$id": "gts://gts.vendor.package.namespace.type.v1.1~",
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
@@ -2423,7 +2423,7 @@ mod tests {
         let cfg = GtsConfig::default();
 
         let from_schema_content = json!({
-            "$id": "gts.vendor.package.namespace.type.v1.0~",
+            "$id": "gts://gts.vendor.package.namespace.type.v1.0~",
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
@@ -2432,7 +2432,7 @@ mod tests {
         });
 
         let to_schema_content = json!({
-            "$id": "gts.vendor.package.namespace.type.v1.1~",
+            "$id": "gts://gts.vendor.package.namespace.type.v1.1~",
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {

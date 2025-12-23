@@ -19,6 +19,7 @@ Runtime models with GTS schema generation
 
 #[struct_to_gts_schema(
     dir_path = "schemas",
+    base = true,
     schema_id = "gts.x.core.events.type.v1~",
     description = "Base event type definition",
     properties = "event_type,id,tenant_id,sequence_id,payload"
@@ -35,6 +36,7 @@ pub struct BaseEventV1<P> {
 
 #[struct_to_gts_schema(
     dir_path = "schemas",
+    base = BaseEventV1,
     schema_id = "gts.x.core.events.type.v1~x.core.audit.event.v1~",
     description = "Audit event with user context",
     properties = "user_agent,user_id,ip_address,data"
@@ -49,6 +51,7 @@ pub struct AuditPayloadV1<D> {
 
 #[struct_to_gts_schema(
     dir_path = "schemas",
+    base = AuditPayloadV1,
     schema_id = "gts.x.core.events.type.v1~x.core.audit.event.v1~x.marketplace.orders.purchase.v1~",
     description = "Order placement audit event",
     properties = "order_id,product_id"
@@ -57,6 +60,37 @@ pub struct AuditPayloadV1<D> {
 pub struct PlaceOrderDataV1 {
     pub order_id: Uuid,
     pub product_id: Uuid,
+}
+
+/* ============================================================
+Runtime models with explicit 'base' attribute
+============================================================ */
+
+#[struct_to_gts_schema(
+    dir_path = "schemas",
+    base = true,
+    schema_id = "gts.x.core.events.topic.v1~",
+    description = "Base topic type definition",
+    properties = "name,description"
+)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct TopicV1<P> {
+    pub name: String,
+    pub description: Option<String>,
+    pub config: P,
+}
+
+#[struct_to_gts_schema(
+    dir_path = "schemas",
+    base = TopicV1,
+    schema_id = "gts.x.core.events.topic.v1~x.commerce.orders.topic.v1~",
+    description = "Order topic configuration",
+    properties = "retention_days,partitions"
+)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct OrderTopicConfigV1 {
+    pub retention_days: u32,
+    pub partitions: u32,
 }
 
 /* ============================================================
@@ -289,5 +323,69 @@ mod tests {
         // The schema should have:
         // - payload: { type: "object", properties: { user_agent: {...}, user_id: {...}, ip_address: {...}, data: {...} } }
         // - data: { type: "object", properties: { order_id: {...}, product_id: {...} } }
+    }
+
+    // =============================================================================
+    // Tests for explicit 'base' attribute
+    // =============================================================================
+
+    #[test]
+    fn test_base_schema_id_constants() {
+        // Base type should have BASE_SCHEMA_ID = None
+        assert_eq!(BaseEventV1::<()>::BASE_SCHEMA_ID, None);
+        assert_eq!(TopicV1::<()>::BASE_SCHEMA_ID, None);
+
+        // Child types should have BASE_SCHEMA_ID = Some(parent's schema ID)
+        assert_eq!(
+            AuditPayloadV1::<()>::BASE_SCHEMA_ID,
+            Some("gts.x.core.events.type.v1~")
+        );
+        assert_eq!(
+            PlaceOrderDataV1::BASE_SCHEMA_ID,
+            Some("gts.x.core.events.type.v1~x.core.audit.event.v1~")
+        );
+        assert_eq!(
+            OrderTopicConfigV1::BASE_SCHEMA_ID,
+            Some("gts.x.core.events.topic.v1~")
+        );
+    }
+
+    #[test]
+    fn test_explicit_base_attribute_schema_generation() {
+        // TopicV1 is marked with base = true
+        let topic_schema = TopicV1::<()>::gts_schema_with_refs();
+
+        // Base schema should have direct properties, no allOf
+        assert!(
+            !topic_schema.get("allOf").is_some(),
+            "TopicV1 (base = true) should not have allOf"
+        );
+        assert!(
+            topic_schema.get("properties").is_some(),
+            "TopicV1 should have direct properties"
+        );
+
+        // Verify $id
+        assert_eq!(topic_schema["$id"], "gts://gts.x.core.events.topic.v1~");
+    }
+
+    #[test]
+    fn test_explicit_base_parent_relationship() {
+        // OrderTopicConfigV1 is marked with base = TopicV1
+        // The compile-time assertion already verified that TopicV1::GTS_SCHEMA_ID
+        // matches the parent segment in OrderTopicConfigV1's schema_id
+
+        // Verify the schema IDs are correctly related
+        assert_eq!(TopicV1::<()>::GTS_SCHEMA_ID, "gts.x.core.events.topic.v1~");
+        assert_eq!(
+            OrderTopicConfigV1::GTS_SCHEMA_ID,
+            "gts.x.core.events.topic.v1~x.commerce.orders.topic.v1~"
+        );
+
+        // The parent segment should match
+        assert_eq!(
+            OrderTopicConfigV1::BASE_SCHEMA_ID,
+            Some(TopicV1::<()>::GTS_SCHEMA_ID)
+        );
     }
 }

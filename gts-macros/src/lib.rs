@@ -108,6 +108,22 @@ fn extract_schema_version(schema_id: &str) -> Option<Version> {
     }
 }
 
+/// Extract the parent schema ID from a `schema_id` (removes the last segment)
+/// e.g., `gts.x.core.events.type.v1~x.core.audit.event.v1~` -> `gts.x.core.events.type.v1~`
+fn extract_parent_schema_id(schema_id: &str) -> Option<String> {
+    let trimmed = schema_id.trim_end_matches('~');
+    trimmed
+        .rfind('~')
+        .map(|pos| format!("{}~", &trimmed[..pos]))
+}
+
+/// Count the number of segments in a `schema_id`
+/// e.g., `gts.x.core.events.type.v1~` -> 1
+/// e.g., `gts.x.core.events.type.v1~x.core.audit.event.v1~` -> 2
+fn count_schema_segments(schema_id: &str) -> usize {
+    schema_id.matches('~').count()
+}
+
 /// Validate that the struct name version suffix matches the `schema_id` version
 fn validate_version_match(struct_ident: &syn::Ident, schema_id: &str) -> syn::Result<()> {
     let struct_name = struct_ident.to_string();
@@ -152,12 +168,22 @@ fn validate_version_match(struct_ident: &syn::Ident, schema_id: &str) -> syn::Re
     Ok(())
 }
 
+/// Represents the `base` attribute value for struct inheritance
+enum BaseAttr {
+    /// This struct is a base type (no parent)
+    IsBase,
+    /// This struct inherits from the specified parent struct (e.g., `ParentStruct`)
+    /// The macro automatically uses `ParentStruct<()>` in generated code
+    Parent(syn::Ident),
+}
+
 /// Arguments for the `struct_to_gts_schema` macro
 struct GtsSchemaArgs {
     dir_path: String,
     schema_id: String,
     description: String,
     properties: String,
+    base: BaseAttr,
 }
 
 impl Parse for GtsSchemaArgs {
@@ -166,21 +192,59 @@ impl Parse for GtsSchemaArgs {
         let mut schema_id: Option<String> = None;
         let mut description: Option<String> = None;
         let mut properties: Option<String> = None;
+        let mut base: Option<BaseAttr> = None;
 
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
             input.parse::<Token![=]>()?;
-            let value: LitStr = input.parse()?;
 
             match key.to_string().as_str() {
-                "dir_path" => dir_path = Some(value.value()),
-                "schema_id" => schema_id = Some(value.value()),
-                "description" => description = Some(value.value()),
-                "properties" => properties = Some(value.value()),
-                _ => return Err(syn::Error::new_spanned(
-                    key,
-                    "Unknown attribute. Expected: dir_path, schema_id, description, or properties",
-                )),
+                "dir_path" => {
+                    let value: LitStr = input.parse()?;
+                    dir_path = Some(value.value());
+                }
+                "schema_id" => {
+                    let value: LitStr = input.parse()?;
+                    schema_id = Some(value.value());
+                }
+                "description" => {
+                    let value: LitStr = input.parse()?;
+                    description = Some(value.value());
+                }
+                "properties" => {
+                    let value: LitStr = input.parse()?;
+                    properties = Some(value.value());
+                }
+                "base" => {
+                    // base can be: true (is a base type) or a struct name (parent struct)
+                    // Handle 'true' as a boolean literal (keyword)
+                    if input.peek(syn::LitBool) {
+                        let lit: syn::LitBool = input.parse()?;
+                        if lit.value {
+                            base = Some(BaseAttr::IsBase);
+                        } else {
+                            return Err(syn::Error::new_spanned(
+                                lit,
+                                "base = false is not valid. Use 'base = true' for base types or 'base = ParentStruct' for child types",
+                            ));
+                        }
+                    } else if input.peek(syn::Ident) {
+                        // Parse parent struct name - the macro automatically adds <()>
+                        let ident: syn::Ident = input.parse()?;
+                        base = Some(BaseAttr::Parent(ident));
+                    } else {
+                        return Err(syn::Error::new_spanned(
+                            key,
+                            "base must be 'true' or a parent struct name (e.g., 'base = ParentStruct')",
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        key,
+                        "Unknown attribute. Expected: dir_path, schema_id, description, properties, or base",
+                    ));
+                }
             }
 
             if input.peek(Token![,]) {
@@ -197,6 +261,8 @@ impl Parse for GtsSchemaArgs {
                 .ok_or_else(|| input.error("Missing required attribute: description"))?,
             properties: properties
                 .ok_or_else(|| input.error("Missing required attribute: properties"))?,
+            base: base
+                .ok_or_else(|| input.error("Missing required attribute: base (use 'base = true' for base types or 'base = ParentStruct' for child types)"))?,
         })
     }
 }
@@ -249,6 +315,9 @@ impl Parse for GtsSchemaArgs {
 ///   - Example: `gts.x.core.events.type.v1~x.core.audit.event.v1~` inherits from `gts.x.core.events.type.v1~`
 /// * `description` - Human-readable description of the schema
 /// * `properties` - Comma-separated list of struct fields to include in the schema
+/// * `base` - Explicit base/parent struct declaration (required):
+///   - `base = true`: Marks this struct as a base type (must have single-segment `schema_id`)
+///   - `base = ParentStruct`: Parent struct name (macro automatically uses `ParentStruct<()>`)
 ///
 /// # Memory Efficiency
 ///
@@ -351,6 +420,45 @@ pub fn struct_to_gts_schema(attr: TokenStream, item: TokenStream) -> TokenStream
         return err.to_compile_error().into();
     }
 
+    // Validate base attribute consistency with schema_id segments
+    let segment_count = count_schema_segments(&args.schema_id);
+    let expected_parent_schema_id = extract_parent_schema_id(&args.schema_id);
+
+    match &args.base {
+        BaseAttr::IsBase => {
+            // base = true: must be a single-segment schema (no parent)
+            if segment_count > 1 {
+                return syn::Error::new_spanned(
+                    &input.ident,
+                    format!(
+                        "struct_to_gts_schema: 'base = true' but schema_id '{}' has {} segments. \
+                         A base type must have exactly 1 segment (no parent). \
+                         Either use 'base = ParentStruct' or fix the schema_id.",
+                        args.schema_id, segment_count
+                    ),
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+        BaseAttr::Parent(_) => {
+            // base = ParentStruct: must have at least 2 segments
+            if segment_count < 2 {
+                return syn::Error::new_spanned(
+                    &input.ident,
+                    format!(
+                        "struct_to_gts_schema: 'base' specifies a parent struct but schema_id '{}' \
+                         has only {} segment. A child type must have at least 2 segments. \
+                         Either use 'base = true' or add parent segment to schema_id.",
+                        args.schema_id, segment_count
+                    ),
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+    }
+
     // Build the schema output file path from dir_path + schema_id
     let struct_name = &input.ident;
     let dir_path = &args.dir_path;
@@ -392,6 +500,70 @@ pub fn struct_to_gts_schema(attr: TokenStream, item: TokenStream) -> TokenStream
         quote! { Some(#field_name) }
     } else {
         quote! { None }
+    };
+
+    // Generate BASE_SCHEMA_ID constant and compile-time assertion for base struct matching
+    let base_schema_id_const = if let Some(parent_id) = &expected_parent_schema_id {
+        quote! {
+            /// Parent schema ID (extracted from schema_id segments).
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            pub const BASE_SCHEMA_ID: Option<&'static str> = Some(#parent_id);
+        }
+    } else {
+        quote! {
+            /// Parent schema ID (None for base types).
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            pub const BASE_SCHEMA_ID: Option<&'static str> = None;
+        }
+    };
+
+    // Generate compile-time assertion when base = ParentStruct
+    let base_assertion = match &args.base {
+        BaseAttr::Parent(parent_ident) => {
+            let parent_id = expected_parent_schema_id
+                .as_ref()
+                .expect("parent_id must exist when base is specified");
+            let assertion_msg = format!(
+                "struct_to_gts_schema: Base struct '{parent_ident}' schema ID must match parent segment '{parent_id}' from schema_id"
+            );
+            quote! {
+                // Compile-time assertion: verify parent struct's GTS_SCHEMA_ID matches expected parent segment
+                // We use <ParentStruct<()> as GtsSchema> since all GTS structs must be generic
+                const _: () = {
+                    // Use a const assertion to verify at compile time
+                    const PARENT_ID: &str = <#parent_ident<()> as ::gts::GtsSchema>::SCHEMA_ID;
+                    const EXPECTED_ID: &str = #parent_id;
+                    // Compare string lengths first (const-compatible)
+                    assert!(
+                        PARENT_ID.len() == EXPECTED_ID.len(),
+                        #assertion_msg
+                    );
+                    // Compare bytes (const-compatible string comparison)
+                    const fn str_eq(a: &str, b: &str) -> bool {
+                        let a = a.as_bytes();
+                        let b = b.as_bytes();
+                        if a.len() != b.len() {
+                            return false;
+                        }
+                        let mut i = 0;
+                        while i < a.len() {
+                            if a[i] != b[i] {
+                                return false;
+                            }
+                            i += 1;
+                        }
+                        true
+                    }
+                    assert!(
+                        str_eq(PARENT_ID, EXPECTED_ID),
+                        #assertion_msg
+                    );
+                };
+            }
+        }
+        BaseAttr::IsBase => quote! {},
     };
 
     // Generate gts_schema() implementation based on whether we have a generic parameter
@@ -623,6 +795,9 @@ pub fn struct_to_gts_schema(attr: TokenStream, item: TokenStream) -> TokenStream
     let expanded = quote! {
         #input
 
+        // Compile-time assertion for base struct matching (if specified)
+        #base_assertion
+
         impl #impl_generics #struct_name #ty_generics #where_clause {
             /// File path where the GTS schema will be generated by the CLI.
             #[doc(hidden)]
@@ -643,6 +818,8 @@ pub fn struct_to_gts_schema(attr: TokenStream, item: TokenStream) -> TokenStream
             #[doc(hidden)]
             #[allow(dead_code)]
             pub const GTS_SCHEMA_PROPERTIES: &'static str = #properties_str;
+
+            #base_schema_id_const
 
             /// Generate a GTS instance ID by appending a segment to the schema ID.
             #[allow(dead_code)]

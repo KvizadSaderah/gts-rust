@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[struct_to_gts_schema(
     dir_path = "schemas",
+    base = true,
     schema_id = "gts.x.core.events.topic.v1~",
     description = "Event Topic (Stream) definition",
     properties = "id,name,description,retention,ordering"
@@ -43,6 +44,7 @@ pub struct EventTopic {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[struct_to_gts_schema(
     dir_path = "schemas",
+    base = true,
     schema_id = "gts.x.test.entities.product.v1~",
     description = "Product entity with pricing information",
     properties = "id,name,price,description,in_stock"

@@ -8,6 +8,150 @@ use syn::{
     parse_macro_input, Data, DeriveInput, Fields, LitStr, Token,
 };
 
+/// Represents a parsed version (major and optional minor)
+#[derive(Debug, PartialEq)]
+struct Version {
+    major: u32,
+    minor: Option<u32>,
+}
+
+/// Extract version from struct name suffix (e.g., `BaseEventV1` -> V1, `BaseEventV2_0` -> V2.0)
+fn extract_struct_version(struct_name: &str) -> Option<Version> {
+    // Look for pattern: V<major> or V<major>_<minor> at the end of the name
+    // We need to find the last 'V' followed by digits
+    let bytes = struct_name.as_bytes();
+    let mut v_pos = None;
+
+    // Find the last 'V' that starts a version suffix
+    for i in (0..bytes.len()).rev() {
+        if bytes[i] == b'V' {
+            // Check if followed by at least one digit
+            if i + 1 < bytes.len() && bytes[i + 1].is_ascii_digit() {
+                v_pos = Some(i);
+                break;
+            }
+        }
+    }
+
+    let v_pos = v_pos?;
+    let version_part = &struct_name[v_pos + 1..]; // Skip the 'V'
+
+    // Parse major_minor pattern
+    if let Some(underscore_pos) = version_part.find('_') {
+        // Has minor version: V<major>_<minor>
+        let major_str = &version_part[..underscore_pos];
+        let minor_str = &version_part[underscore_pos + 1..];
+
+        let major = major_str.parse::<u32>().ok()?;
+        let minor = minor_str.parse::<u32>().ok()?;
+        Some(Version {
+            major,
+            minor: Some(minor),
+        })
+    } else {
+        // Only major version: V<major>
+        let major = version_part.parse::<u32>().ok()?;
+        Some(Version { major, minor: None })
+    }
+}
+
+/// Extract version from `schema_id`'s last segment (e.g., `gts.x.core.events.type.v1~` -> v1)
+fn extract_schema_version(schema_id: &str) -> Option<Version> {
+    // Get the last segment (after last '~' that's followed by content, or the whole string if no '~')
+    // schema_id format: "gts.vendor.package.namespace.type.vMAJOR~" or with inheritance
+    // "gts.x.core.events.type.v1~x.core.audit.event.v1~"
+
+    // The version for this struct is in the LAST segment
+    let last_segment = if schema_id.ends_with('~') {
+        // Trim the trailing ~ and find the last segment
+        let trimmed = schema_id.trim_end_matches('~');
+        if let Some(pos) = trimmed.rfind('~') {
+            &trimmed[pos + 1..]
+        } else {
+            trimmed
+        }
+    } else {
+        schema_id
+    };
+
+    // Now find the version in this segment
+    // Format is: something.vMAJOR or something.vMAJOR.MINOR
+    // Find the last ".v" followed by a digit
+    let mut version_start = None;
+    let bytes = last_segment.as_bytes();
+
+    for i in 0..bytes.len().saturating_sub(2) {
+        if bytes[i] == b'.' && bytes[i + 1] == b'v' && bytes[i + 2].is_ascii_digit() {
+            version_start = Some(i + 2); // Position after ".v"
+        }
+    }
+
+    let version_start = version_start?;
+    let version_part = &last_segment[version_start..];
+
+    // Parse version: MAJOR or MAJOR.MINOR
+    if let Some(dot_pos) = version_part.find('.') {
+        // Has minor version: MAJOR.MINOR
+        let major_str = &version_part[..dot_pos];
+        let minor_str = &version_part[dot_pos + 1..];
+
+        let major = major_str.parse::<u32>().ok()?;
+        let minor = minor_str.parse::<u32>().ok()?;
+        Some(Version {
+            major,
+            minor: Some(minor),
+        })
+    } else {
+        // Only major version
+        let major = version_part.parse::<u32>().ok()?;
+        Some(Version { major, minor: None })
+    }
+}
+
+/// Validate that the struct name version suffix matches the `schema_id` version
+fn validate_version_match(struct_ident: &syn::Ident, schema_id: &str) -> syn::Result<()> {
+    let struct_name = struct_ident.to_string();
+
+    let Some(struct_version) = extract_struct_version(&struct_name) else {
+        // No version suffix found in struct name - that's okay, skip validation
+        return Ok(());
+    };
+
+    let Some(schema_version) = extract_schema_version(schema_id) else {
+        return Err(syn::Error::new_spanned(
+            struct_ident,
+            format!(
+                "struct_to_gts_schema: Cannot extract version from schema_id '{schema_id}'. \
+                 Expected format with version like 'gts.x.foo.v1~' or 'gts.x.foo.v1.0~'"
+            ),
+        ));
+    };
+
+    // Check if versions match
+    if struct_version != schema_version {
+        let struct_ver_str = match struct_version.minor {
+            Some(minor) => format!("V{}_{}", struct_version.major, minor),
+            None => format!("V{}", struct_version.major),
+        };
+        let schema_ver_str = match schema_version.minor {
+            Some(minor) => format!("v{}.{}", schema_version.major, minor),
+            None => format!("v{}", schema_version.major),
+        };
+
+        return Err(syn::Error::new_spanned(
+            struct_ident,
+            format!(
+                "struct_to_gts_schema: Version mismatch between struct name and schema_id. \
+                 Struct '{struct_name}' has version suffix '{struct_ver_str}' but schema_id '{schema_id}' \
+                 has version '{schema_ver_str}'. The versions must match exactly \
+                 (e.g., BaseEventV1 with v1~, or BaseEventV2_0 with v2.0~)"
+            ),
+        ));
+    }
+
+    Ok(())
+}
+
 /// Arguments for the `struct_to_gts_schema` macro
 struct GtsSchemaArgs {
     dir_path: String,
@@ -200,6 +344,11 @@ pub fn struct_to_gts_schema(attr: TokenStream, item: TokenStream) -> TokenStream
             .to_compile_error()
             .into();
         }
+    }
+
+    // Validate version match between struct name suffix and schema_id
+    if let Err(err) = validate_version_match(&input.ident, &args.schema_id) {
+        return err.to_compile_error().into();
     }
 
     // Build the schema output file path from dir_path + schema_id

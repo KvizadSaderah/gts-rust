@@ -189,64 +189,6 @@ macro_rules! gts_schema_for {
     }};
 }
 
-/// Helper function to compose a parent schema with a nested schema.
-/// Replaces the generic field's type with the nested schema.
-///
-/// # Panics
-///
-/// Panics if `result` is not a JSON object when attempting to remove `allOf`.
-#[must_use]
-pub fn compose_schema(parent_schema: &Value, generic_field: &str, nested_schema: &Value) -> Value {
-    let mut result = parent_schema.clone();
-
-    // Remove allOf if present - we're building a flat nested structure
-    if result.get("allOf").is_some() {
-        // Merge allOf entries into a single schema
-        if let Some(all_of) = result.get("allOf").and_then(|v| v.as_array()) {
-            let mut merged_props = serde_json::Map::new();
-            let mut merged_required: Vec<String> = Vec::new();
-
-            for entry in all_of {
-                if let Some(props) = entry.get("properties").and_then(|v| v.as_object()) {
-                    for (k, v) in props {
-                        merged_props.insert(k.clone(), v.clone());
-                    }
-                }
-                if let Some(req) = entry.get("required").and_then(|v| v.as_array()) {
-                    for r in req {
-                        if let Some(s) = r.as_str() {
-                            let s_owned = s.to_owned();
-                            if !merged_required.contains(&s_owned) {
-                                merged_required.push(s_owned);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let Some(obj) = result.as_object_mut() {
-                obj.remove("allOf");
-            }
-            result["properties"] = Value::Object(merged_props);
-            if !merged_required.is_empty() {
-                result["required"] = serde_json::json!(merged_required);
-            }
-        }
-    }
-
-    // Strip metadata from nested schema for cleaner output
-    let clean_nested = strip_schema_metadata(nested_schema);
-
-    // Now replace the generic field's type with the nested schema
-    if let Some(props) = result.get_mut("properties").and_then(|v| v.as_object_mut()) {
-        if props.contains_key(generic_field) {
-            props.insert(generic_field.to_owned(), clean_nested);
-        }
-    }
-
-    result
-}
-
 /// Strip schema metadata fields ($id, $schema, title, description) for cleaner nested schemas.
 #[must_use]
 pub fn strip_schema_metadata(schema: &Value) -> Value {

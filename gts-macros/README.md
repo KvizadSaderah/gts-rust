@@ -83,6 +83,7 @@ The macro validates your annotations at compile time, catching errors early.
 | **Parent schema match** | When `base = Parent`, Parent's SCHEMA_ID must match the parent segment in schema_id |
 | **Property existence** | Every property in the list must exist as a field in the struct |
 | **Struct type** | Only structs with named fields are supported (no tuple structs) |
+| **Generic type constraints** | Generic type parameters must implement `GtsSchema` (only `()` or other GTS structs allowed) |
 
 ### Compile Error Examples
 
@@ -144,6 +145,22 @@ pub struct Data(String);  // ❌ Tuple struct not supported
 ```
 ```
 error: struct_to_gts_schema: Only structs with named fields are supported
+```
+
+**Non-GTS struct as generic argument:**
+```rust
+// Regular struct without struct_to_gts_schema
+pub struct MyStruct { pub some_id: String }
+
+// Using it as generic argument fails
+let event: BaseEventV1<MyStruct> = BaseEventV1 { /* ... */ };  // ❌ Error!
+```
+```
+error[E0277]: the trait bound `MyStruct: GtsSchema` is not satisfied
+  --> src/main.rs:10:17
+   |
+10 |     let event: BaseEventV1<MyStruct> = BaseEventV1 { ... };
+   |                ^^^^^^^^^^^^^^^^^^^^^ the trait `GtsSchema` is not implemented for `MyStruct`
 ```
 
 ---
@@ -590,6 +607,26 @@ The macro validates your configuration at compile time, preventing runtime error
 | **Valid GTS ID format** | Malformed schema identifiers |
 | **Memory efficiency** | No unnecessary allocations in generated constants |
 | **Strict generic field validation** | Generic fields have `additionalProperties: false` to ensure only nested inherited structs are allowed |
+| **GTS-only generic arguments** | Using non-GTS structs as generic type parameters (see below) |
+
+### Generic Type Parameter Constraints
+
+The macro automatically adds a `GtsSchema` trait bound to all generic type parameters. This ensures that only valid GTS types can be used as generic arguments:
+
+```rust
+// ✅ Allowed: () is a valid GTS type (terminates the chain)
+let event: BaseEventV1<()> = BaseEventV1 { /* ... */ };
+
+// ✅ Allowed: AuditPayloadV1 has struct_to_gts_schema applied
+let event: BaseEventV1<AuditPayloadV1<()>> = BaseEventV1 { /* ... */ };
+
+// ❌ Compile error: MyStruct does not implement GtsSchema
+pub struct MyStruct { pub some_id: String }
+let event: BaseEventV1<MyStruct> = BaseEventV1 { /* ... */ };
+// error: the trait bound `MyStruct: GtsSchema` is not satisfied
+```
+
+This prevents accidental use of arbitrary structs that haven't been properly annotated with `struct_to_gts_schema`, ensuring type safety across the entire GTS inheritance chain.
 
 ### Generic Fields and `additionalProperties`
 

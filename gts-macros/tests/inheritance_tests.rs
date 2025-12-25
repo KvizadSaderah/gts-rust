@@ -417,19 +417,31 @@ mod tests {
     }
 
     #[test]
-    fn test_unit_struct_instantiation() {
+    fn test_unit_struct_instantiation_and_serialization() {
         // Unit struct should be usable as a type parameter for parent
-        let topic = TopicV1 {
+        let topic = TopicV1::<OrderTopicConfigV1> {
             name: "orders".to_string(),
             description: Some("Order events".to_string()),
-            config: OrderTopicConfigV1 {},
+            config: OrderTopicConfigV1,
         };
 
-        // Serialize should work
+        // Serialize to JSON string should work
+        let json_str = serde_json::to_string(&topic).unwrap();
+        assert!(json_str.contains("orders"), "JSON should contain topic name");
+
+        // Serialize to Value should work
         let json = serde_json::to_value(&topic).unwrap();
         assert_eq!(json["name"], "orders");
         assert_eq!(json["description"], "Order events");
-        // config field will serialize to null for unit struct with default serde
+        // Unit struct serializes to null with default serde
+        assert_eq!(json["config"], serde_json::Value::Null);
+
+        // Serialize pretty should work
+        let json_pretty = serde_json::to_string_pretty(&topic).unwrap();
+        assert!(
+            json_pretty.contains("orders"),
+            "Pretty JSON should contain topic name"
+        );
     }
 
     #[test]

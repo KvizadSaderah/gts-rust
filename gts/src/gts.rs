@@ -3,7 +3,6 @@ use std::str::FromStr;
 use std::sync::LazyLock;
 use thiserror::Error;
 use uuid::Uuid;
-use schemars::JsonSchema;
 
 pub const GTS_PREFIX: &str = "gts.";
 /// URI-compatible prefix for GTS identifiers in JSON Schema `$id` field (e.g., `gts://gts.x.y.z...`).
@@ -572,28 +571,20 @@ impl AsRef<str> for GtsWildcard {
 /// `GtsEntityId` wraps a fully-formed GTS entity ID string (e.g.,
 /// `gts.x.core.events.topic.v1~vendor.app.orders.v1.0`). It can be used as a map key,
 /// compared for equality, hashed, and serialized/deserialized.
-///
-/// # Example
-///
-/// ```
-/// use gts::GtsEntityId;
-///
-/// let id = GtsEntityId::new("gts.x.core.events.type.v1~vendor.app.orders.v1.0~");
-/// assert_eq!(id.as_ref(), "gts.x.core.events.type.v1~vendor.app.orders.v1.0~");
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GtsEntityId(String);
 
 impl GtsEntityId {
     /// Creates a new GTS entity ID from a string.
+    /// Must be private as it's used by `GtsInstanceId::new()` or `GtsEntityId::new()`.
     #[must_use]
-    pub fn new(id: &str) -> Self {
-        Self(id.to_string())
+    fn new(id: &str) -> Self {
+        Self(id.to_owned())
     }
 
     /// Returns the underlying string representation of the entity ID.
     #[must_use]
-    pub fn into_string(self) -> String {
+    fn into_string(self) -> String {
         self.0
     }
 }
@@ -630,8 +621,55 @@ impl From<GtsEntityId> for String {
 /// let id = GtsInstanceId::new("gts.x.core.events.topic.v1~", "vendor.app.orders.v1.0");
 /// assert_eq!(id.as_ref(), "gts.x.core.events.topic.v1~vendor.app.orders.v1.0");
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GtsInstanceId(GtsEntityId);
+
+impl serde::Serialize for GtsInstanceId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_ref())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for GtsInstanceId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(GtsInstanceId(GtsEntityId(s)))
+    }
+}
+
+impl schemars::JsonSchema for GtsInstanceId {
+    fn schema_name() -> String {
+        "GtsInstanceId".to_owned()
+    }
+
+    fn json_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let mut schema = schemars::schema::SchemaObject {
+            instance_type: Some(schemars::schema::InstanceType::String.into()),
+            format: Some("gts-instance-id".to_owned()),
+            metadata: Some(Box::new(schemars::schema::Metadata {
+                title: Some("GTS Instance ID".to_owned()),
+                description: Some("GTS instance identifier".to_owned()),
+                ..Default::default()
+            })),
+            ..Default::default()
+        };
+        schema.extensions.insert(
+            "x-gts-ref".to_owned(),
+            serde_json::Value::String("gts.*".to_owned()), // TODO: must be real GTS reference
+        );
+        schema.into()
+    }
+
+    fn is_referenceable() -> bool {
+        false
+    }
+}
 
 impl GtsInstanceId {
     /// Creates a new GTS instance ID by combining a schema ID with a segment.
@@ -709,13 +747,60 @@ impl PartialEq<String> for GtsInstanceId {
 /// # Example
 ///
 /// ```
-/// use gts::GtsSchemaId;
+/// use gts::gts::GtsSchemaId;
 ///
 /// let id = GtsSchemaId::new("gts.x.core.events.topic.v1~vendor.app.orders.v1.0~");
 /// assert_eq!(id.as_ref(), "gts.x.core.events.topic.v1~vendor.app.orders.v1.0~");
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GtsSchemaId(GtsEntityId);
+
+impl serde::Serialize for GtsSchemaId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_ref())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for GtsSchemaId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(GtsSchemaId(GtsEntityId(s)))
+    }
+}
+
+impl schemars::JsonSchema for GtsSchemaId {
+    fn schema_name() -> String {
+        "GtsSchemaId".to_owned()
+    }
+
+    fn json_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let mut schema = schemars::schema::SchemaObject {
+            instance_type: Some(schemars::schema::InstanceType::String.into()),
+            format: Some("gts-schema-id".to_owned()),
+            metadata: Some(Box::new(schemars::schema::Metadata {
+                title: Some("GTS Schema ID".to_owned()),
+                description: Some("GTS schema identifier".to_owned()),
+                ..Default::default()
+            })),
+            ..Default::default()
+        };
+        schema.extensions.insert(
+            "x-gts-ref".to_owned(),
+            serde_json::Value::String("gts.*".to_owned()), // TODO: must be real GTS reference
+        );
+        schema.into()
+    }
+
+    fn is_referenceable() -> bool {
+        false
+    }
+}
 
 impl GtsSchemaId {
     /// Creates a new GTS schema ID from string.
@@ -729,7 +814,7 @@ impl GtsSchemaId {
     /// A new `GtsSchemaId` containing the concatenated ID.
     #[must_use]
     pub fn new(schema_id: &str) -> Self {
-        Self(GtsEntityId::new(&format!("{schema_id}")))
+        Self(GtsEntityId::new(schema_id))
     }
 
     /// Returns the underlying string representation of the schema ID.
@@ -782,7 +867,6 @@ impl PartialEq<String> for GtsSchemaId {
         self.0.as_ref() == other
     }
 }
-
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]

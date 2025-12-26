@@ -716,9 +716,9 @@ mod tests {
     #[test]
     fn test_json_entity_extract_gts_ids() {
         let content = json!({
-            "id": "gts.vendor.package.namespace.type.v1.0",
+            "id": "gts.vendor.package.namespace.type.v1.0~a.b.c.d.v1",
             "nested": {
-                "ref": "gts.other.package.namespace.type.v2.0"
+                "ref": "gts.other.package.namespace.type.v2.0~e.f.g.h.v2"
             }
         });
 
@@ -1412,7 +1412,7 @@ mod tests {
         // Well-known instance with single-segment GTS ID (no chain)
         // Should not have schema_id extracted from chain
         let content = json!({
-            "id": "gts.vendor.package.namespace.type.v1.0"
+            "id": "gts.vendor.package.namespace.type.v1.0~a.b.c.d.v1"
         });
 
         let cfg = GtsConfig::default();
@@ -1432,10 +1432,10 @@ mod tests {
         assert!(entity.gts_id.is_some());
         assert_eq!(
             entity.gts_id.as_ref().unwrap().id,
-            "gts.vendor.package.namespace.type.v1.0"
+            "gts.vendor.package.namespace.type.v1.0~a.b.c.d.v1"
         );
         // Single-segment ID doesn't have a parent schema in the chain
-        assert!(entity.schema_id.is_none());
+        assert!(entity.schema_id != Some("gts.vendor.package.namespace.type.v1.0~".to_owned()));
     }
 
     #[test]

@@ -232,6 +232,26 @@ impl GtsOps {
         self.store = GtsStore::new(Some(reader));
     }
 
+    fn get_details(&mut self, entity: &GtsEntity) -> String {
+        let result = "Content: ".to_owned()
+            + &serde_json::to_string_pretty(&entity.content)
+                .unwrap_or_else(|_| "<invalid JSON>".to_owned());
+
+        // Add schema information if available
+        if let Some(schema_id) = &entity.schema_id {
+            match self.store.get(schema_id) {
+                Some(schema_entity) => {
+                    let schema_content = serde_json::to_string_pretty(&schema_entity.content)
+                        .unwrap_or_else(|_| "<invalid schema JSON>".to_owned());
+                    result + "\nSchema: " + &schema_content
+                }
+                None => result + "\nSchema: not found",
+            }
+        } else {
+            result
+        }
+    }
+
     pub fn add_entity(&mut self, content: &Value, validate: bool) -> GtsAddEntityResult {
         let entity = GtsEntity::new(
             None,
@@ -254,9 +274,12 @@ impl GtsOps {
                 schema_id: None,
                 is_schema: false,
                 error: if entity.is_schema {
-                    "Unable to detect GTS ID in schema entity".to_owned()
+                    format!(
+                        "Unable to detect GTS ID in schema entity:\n{}",
+                        self.get_details(&entity)
+                    )
                 } else {
-                    "Unable to detect ID in instance entity. Instances must have an 'id' field (or one of the configured entity_id_fields)".to_owned()
+                    format!("Unable to detect ID in instance entity. Instances must have an 'id' field (or one of the configured entity_id_fields):\n{}", self.get_details(&entity))
                 },
             };
         };
@@ -268,7 +291,10 @@ impl GtsOps {
                 id: String::new(),
                 schema_id: None,
                 is_schema: false,
-                error: e.to_string(),
+                error: format!(
+                    "Unable to register entity: {e}\n{}",
+                    self.get_details(&entity)
+                ),
             };
         }
 
@@ -280,7 +306,10 @@ impl GtsOps {
                     id: String::new(),
                     schema_id: None,
                     is_schema: false,
-                    error: format!("Validation failed: {e}"),
+                    error: format!(
+                        "Schema validation failed: {e}\n{}",
+                        self.get_details(&entity)
+                    ),
                 };
             }
         }
@@ -293,10 +322,15 @@ impl GtsOps {
                     id: String::new(),
                     schema_id: None,
                     is_schema: false,
-                    error: format!("Validation failed: {e}"),
+                    error: format!(
+                        "Instance validation failed: {e}\n{}",
+                        self.get_details(&entity)
+                    ),
                 };
             }
         }
+
+        // println!("submitted: {}", self.get_content_pretty(&entity));
 
         GtsAddEntityResult {
             ok: true,
@@ -324,7 +358,20 @@ impl GtsOps {
             Err(e) => GtsAddSchemaResult {
                 ok: false,
                 id: String::new(),
-                error: e.to_string(),
+                error: format!(
+                    "Unable to register schema: {e}\n{}",
+                    self.get_details(&GtsEntity::new(
+                        None,
+                        None,
+                        schema,
+                        Some(&self.cfg),
+                        None,
+                        false,
+                        String::new(),
+                        None,
+                        None,
+                    ))
+                ),
             },
         }
     }
@@ -340,7 +387,7 @@ impl GtsOps {
             Err(e) => GtsIdValidationResult {
                 id: gts_id.to_owned(),
                 valid: false,
-                error: e.to_string(),
+                error: format!("Unable to validate GTS ID '{gts_id}': {e}"),
             },
         }
     }

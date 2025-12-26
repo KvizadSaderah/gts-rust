@@ -662,21 +662,32 @@ impl schemars::JsonSchema for GtsInstanceId {
     }
 
     fn json_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        let mut schema = schemars::schema::SchemaObject {
+        // Build schema from the shared JSON representation
+        let json = Self::json_schema_value();
+        let schema_obj = schemars::schema::SchemaObject {
             instance_type: Some(schemars::schema::InstanceType::String.into()),
-            format: Some("gts-instance-id".to_owned()),
+            format: json
+                .get("format")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             metadata: Some(Box::new(schemars::schema::Metadata {
-                title: Some("GTS Instance ID".to_owned()),
-                description: Some("GTS instance identifier".to_owned()),
+                title: json.get("title").and_then(|v| v.as_str()).map(String::from),
+                description: json
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
                 ..Default::default()
             })),
+            extensions: {
+                let mut ext = schemars::Map::new();
+                if let Some(gts_ref) = json.get("x-gts-ref") {
+                    ext.insert("x-gts-ref".to_owned(), gts_ref.clone());
+                }
+                ext
+            },
             ..Default::default()
         };
-        schema.extensions.insert(
-            "x-gts-ref".to_owned(),
-            serde_json::Value::String("gts.*".to_owned()), // TODO: must be real GTS reference
-        );
-        schema.into()
+        schema_obj.into()
     }
 
     fn is_referenceable() -> bool {
@@ -685,6 +696,31 @@ impl schemars::JsonSchema for GtsInstanceId {
 }
 
 impl GtsInstanceId {
+    /// Returns the JSON Schema representation of `GtsInstanceId` as a `serde_json::Value`.
+    ///
+    /// This is the canonical schema definition used by both the schemars `JsonSchema` impl
+    /// and the CLI schema generator, ensuring consistency.
+    ///
+    /// # Example
+    /// ```
+    /// use gts::gts::GtsInstanceId;
+    ///
+    /// let schema = GtsInstanceId::json_schema_value();
+    /// assert_eq!(schema["type"], "string");
+    /// assert_eq!(schema["format"], "gts-instance-id");
+    /// assert_eq!(schema["x-gts-ref"], "gts.*");
+    /// ```
+    #[must_use]
+    pub fn json_schema_value() -> serde_json::Value {
+        serde_json::json!({
+            "type": "string",
+            "format": "gts-instance-id",
+            "title": "GTS Instance ID",
+            "description": "GTS instance identifier",
+            "x-gts-ref": "gts.*"
+        })
+    }
+
     /// Creates a new GTS instance ID by combining a schema ID with a segment.
     ///
     /// # Arguments
@@ -793,21 +829,32 @@ impl schemars::JsonSchema for GtsSchemaId {
     }
 
     fn json_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        let mut schema = schemars::schema::SchemaObject {
+        // Build schema from the shared JSON representation
+        let json = Self::json_schema_value();
+        let schema_obj = schemars::schema::SchemaObject {
             instance_type: Some(schemars::schema::InstanceType::String.into()),
-            format: Some("gts-schema-id".to_owned()),
+            format: json
+                .get("format")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             metadata: Some(Box::new(schemars::schema::Metadata {
-                title: Some("GTS Schema ID".to_owned()),
-                description: Some("GTS schema identifier".to_owned()),
+                title: json.get("title").and_then(|v| v.as_str()).map(String::from),
+                description: json
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
                 ..Default::default()
             })),
+            extensions: {
+                let mut ext = schemars::Map::new();
+                if let Some(gts_ref) = json.get("x-gts-ref") {
+                    ext.insert("x-gts-ref".to_owned(), gts_ref.clone());
+                }
+                ext
+            },
             ..Default::default()
         };
-        schema.extensions.insert(
-            "x-gts-ref".to_owned(),
-            serde_json::Value::String("gts.*".to_owned()), // TODO: must be real GTS reference
-        );
-        schema.into()
+        schema_obj.into()
     }
 
     fn is_referenceable() -> bool {
@@ -816,6 +863,31 @@ impl schemars::JsonSchema for GtsSchemaId {
 }
 
 impl GtsSchemaId {
+    /// Returns the JSON Schema representation of `GtsSchemaId` as a `serde_json::Value`.
+    ///
+    /// This is the canonical schema definition used by both the schemars `JsonSchema` impl
+    /// and the CLI schema generator, ensuring consistency.
+    ///
+    /// # Example
+    /// ```
+    /// use gts::gts::GtsSchemaId;
+    ///
+    /// let schema = GtsSchemaId::json_schema_value();
+    /// assert_eq!(schema["type"], "string");
+    /// assert_eq!(schema["format"], "gts-schema-id");
+    /// assert_eq!(schema["x-gts-ref"], "gts.*");
+    /// ```
+    #[must_use]
+    pub fn json_schema_value() -> serde_json::Value {
+        serde_json::json!({
+            "type": "string",
+            "format": "gts-schema-id",
+            "title": "GTS Schema ID",
+            "description": "GTS schema identifier",
+            "x-gts-ref": "gts.*"
+        })
+    }
+
     /// Creates a new GTS schema ID from string.
     ///
     /// # Arguments

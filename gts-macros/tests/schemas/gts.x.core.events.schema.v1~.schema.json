@@ -1,0 +1,34 @@
+{
+  "$id": "gts://gts.x.core.events.schema.v1~",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "description": "Base schema type with invalid ID fields but valid GTS Type field",
+  "properties": {
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "gts_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "schema": {
+      "description": "GTS schema identifier",
+      "format": "gts-schema-id",
+      "title": "GTS Schema ID",
+      "type": "string",
+      "x-gts-ref": "gts.*"
+    }
+  },
+  "required": [
+    "gts_id",
+    "name",
+    "schema"
+  ],
+  "title": "BaseSchemaV1MixedV1",
+  "type": "object"
+}

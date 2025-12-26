@@ -1,0 +1,35 @@
+{
+  "$id": "gts://gts.x.core.events.type.v1~x.core.audit.event.v1~",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "allOf": [
+    {
+      "$ref": "gts://gts.x.core.events.type.v1~"
+    },
+    {
+      "properties": {
+        "data": {
+          "type": "object"
+        },
+        "ip_address": {
+          "type": "string"
+        },
+        "user_agent": {
+          "type": "string"
+        },
+        "user_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data",
+        "ip_address",
+        "user_agent",
+        "user_id"
+      ]
+    }
+  ],
+  "description": "Audit event with user context",
+  "title": "AuditPayloadV1 (extends BaseEventV1)",
+  "type": "object"
+}

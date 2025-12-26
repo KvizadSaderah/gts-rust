@@ -1,4 +1,5 @@
 use anyhow::{bail, Result};
+use gts::{GtsInstanceId, GtsSchemaId};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
@@ -513,28 +514,10 @@ fn rust_type_to_json_schema(rust_type: &str) -> (bool, serde_json::Value) {
         t if t.contains("Uuid") || t.contains("uuid") => {
             json!({ "type": "string", "format": "uuid" })
         }
-        // GtsInstanceId - inline the full schema with x-gts-ref extension
-        // This matches the schemars::JsonSchema implementation in gts/src/gts.rs
-        "GtsInstanceId" => {
-            json!({
-                "type": "string",
-                "format": "gts-instance-id",
-                "title": "GTS Instance ID",
-                "description": "GTS instance identifier",
-                "x-gts-ref": "gts.*"
-            })
-        }
-        // GtsSchemaId - inline the full schema with x-gts-ref extension
-        // This matches the schemars::JsonSchema implementation in gts/src/gts.rs
-        "GtsSchemaId" => {
-            json!({
-                "type": "string",
-                "format": "gts-schema-id",
-                "title": "GTS Schema ID",
-                "description": "GTS schema identifier",
-                "x-gts-ref": "gts.*"
-            })
-        }
+        // GtsInstanceId - use the canonical schema from the gts crate
+        "GtsInstanceId" => GtsInstanceId::json_schema_value(),
+        // GtsSchemaId - use the canonical schema from the gts crate
+        "GtsSchemaId" => GtsSchemaId::json_schema_value(),
         // Generic type parameter (e.g., P, T, etc.) - treat as object
         t if t.len() <= 2 && t.chars().all(|c| c.is_ascii_uppercase()) => {
             json!({ "type": "object" })

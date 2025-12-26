@@ -1,13 +1,21 @@
 {
   "$id": "gts://gts.x.test.entities.product.v1~",
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
   "description": "Product entity with pricing information",
   "properties": {
     "description": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "id": {
-      "type": "string"
+      "description": "GTS instance identifier",
+      "format": "gts-instance-id",
+      "title": "GTS Instance ID",
+      "type": "string",
+      "x-gts-ref": "gts.*"
     },
     "in_stock": {
       "type": "boolean"
@@ -21,10 +29,10 @@
   },
   "required": [
     "id",
+    "in_stock",
     "name",
-    "price",
-    "in_stock"
+    "price"
   ],
-  "title": "Product",
+  "title": "ProductV1",
   "type": "object"
 }

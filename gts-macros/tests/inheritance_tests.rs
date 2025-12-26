@@ -1028,4 +1028,48 @@ mod tests {
         assert!(serialized.contains("gts.x.core.events.topic.v1~"));
         assert!(serialized.contains("orders"));
     }
+
+    #[test]
+    fn test_generic_base_struct_schema_consistency() {
+        // Test that TopicV1<()> and TopicV1<OrderTopicConfigV1> generate EXACTLY the same base schema
+        // The type parameter should not affect the schema structure for base types
+
+        use gts::GtsSchema;
+
+        let schema_unit = TopicV1::<()>::gts_schema_with_refs();
+        let schema_concrete = TopicV1::<OrderTopicConfigV1>::gts_schema_with_refs();
+
+        // Print schemas for debugging
+        println!("TopicV1<()> schema:");
+        println!("{}", serde_json::to_string_pretty(&schema_unit).unwrap());
+        println!("\nTopicV1<OrderTopicConfigV1> schema:");
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&schema_concrete).unwrap()
+        );
+
+        // The schemas must be EXACTLY identical
+        assert_eq!(
+            schema_unit, schema_concrete,
+            "TopicV1<()> and TopicV1<OrderTopicConfigV1> must generate identical schemas"
+        );
+
+        // Additional verification: check the $id is correct
+        assert_eq!(
+            schema_unit["$id"], "gts://gts.x.core.events.topic.v1~",
+            "Schema should have TopicV1's schema ID"
+        );
+
+        // Verify it's a base schema (no allOf)
+        assert!(
+            !schema_unit.get("allOf").is_some(),
+            "Base struct should not have allOf"
+        );
+
+        // Verify the config field is a simple placeholder
+        assert_eq!(
+            schema_unit["properties"]["config"]["type"], "object",
+            "Generic field should be a simple object placeholder"
+        );
+    }
 }

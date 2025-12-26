@@ -912,10 +912,12 @@ pub fn struct_to_gts_schema(attr: TokenStream, item: TokenStream) -> TokenStream
             }
 
             fn gts_schema_with_refs_allof() -> serde_json::Value {
-                // Get the innermost type's schema ID for $id
-                let schema_id = Self::innermost_schema_id();
+                // Use THIS struct's schema ID for both $id and parent determination
+                // When a generic base struct is instantiated with a concrete type,
+                // it should still generate its own base schema, not the innermost type's schema
+                let schema_id = Self::SCHEMA_ID;
 
-                // Get parent's ID by removing last segment from schema_id
+                // Get parent's ID by removing last segment from THIS struct's schema_id
                 // e.g., "a~b~c~" -> "a~b~"
                 let parent_schema_id = if schema_id.contains('~') {
                     let s = schema_id.trim_end_matches('~');
@@ -928,19 +930,20 @@ pub fn struct_to_gts_schema(attr: TokenStream, item: TokenStream) -> TokenStream
                     String::new()
                 };
 
-                // Get innermost type's schema (its own properties)
-                let innermost = Self::innermost_schema();
-                let mut properties = innermost.get("properties").cloned().unwrap_or(serde_json::json!({}));
-                let required = innermost.get("required").cloned().unwrap_or(serde_json::json!([]));
+                // Get THIS struct's schema (schemars will expand generic fields automatically)
+                let root_schema = schemars::schema_for!(Self);
+                let schema_val = serde_json::to_value(&root_schema).expect("schemars");
+                let mut properties = schema_val.get("properties").cloned().unwrap_or(serde_json::json!({}));
+                let required = schema_val.get("required").cloned().unwrap_or(serde_json::json!([]));
 
-                // Fix null types for generic fields - change "null" to just "object" (no additionalProperties)
-                // The generic field is a placeholder that will be extended by child schemas
-                if let Some(props) = properties.as_object_mut() {
-                    for (_, prop_val) in props.iter_mut() {
-                        if prop_val.get("type").and_then(|t| t.as_str()) == Some("null") {
-                            *prop_val = serde_json::json!({
+                // Replace the generic field with a simple {"type": "object"} placeholder
+                // The generic field should not be expanded, regardless of the concrete type parameter
+                if let Some(generic_field) = Self::GENERIC_FIELD {
+                    if let Some(props) = properties.as_object_mut() {
+                        if props.contains_key(generic_field) {
+                            props.insert(generic_field.to_owned(), serde_json::json!({
                                 "type": "object"
-                            });
+                            }));
                         }
                     }
                 }

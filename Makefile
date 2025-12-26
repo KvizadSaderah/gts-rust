@@ -1,6 +1,6 @@
 CI := 1
 
-.PHONY: help build dev-fmt all check fmt clippy test deny security update-spec e2e generate-schemas
+.PHONY: help build dev-fmt dev-clippy all check fmt clippy test deny security update-spec e2e generate-schemas
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -17,6 +17,10 @@ build:
 # Fix formatting issues
 dev-fmt:
 	cargo fmt --all
+
+# Fix clippy issues
+dev-clippy:
+	cargo clippy --fix --workspace
 
 # Generate schemas
 generate-schemas: build

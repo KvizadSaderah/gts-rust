@@ -133,6 +133,19 @@ impl GtsIdSegment {
             });
         }
 
+        // Detect extra name token before version (e.g., vendor.package.namespace.type.extra.v1)
+        if !segment.ends_with('*') && tokens.len() == 6 {
+            let has_wildcard = tokens.iter().any(|token| *token == "*");
+            if !has_wildcard && !tokens[4].starts_with('v') && tokens[5].starts_with('v') {
+                return Err(GtsError::InvalidSegment {
+                    num: self.num,
+                    offset: self.offset,
+                    segment: self.segment.clone(),
+                    cause: "Too many name tokens before version".to_owned(),
+                });
+            }
+        }
+
         // Validate tokens (except version tokens)
         if !segment.ends_with('*') {
             for (i, token) in tokens.iter().take(4).enumerate() {

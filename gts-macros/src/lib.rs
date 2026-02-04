@@ -18,6 +18,17 @@ const SERDE_TYPE_RENAMES: &[&str] = &["type", "gts_type", "gtsType", "schema"];
 const GTS_PREFIX: &str = "gts.";
 const GTS_MAX_LENGTH: usize = 1024;
 
+/// Parse a u32 and reject leading zeros (except "0").
+#[inline]
+fn parse_u32_exact(value: &str) -> Option<u32> {
+    let parsed = value.parse::<u32>().ok()?;
+    if parsed.to_string() == value {
+        Some(parsed)
+    } else {
+        None
+    }
+}
+
 /// Validates a GTS segment token without regex for better performance.
 /// Valid tokens: start with [a-z_], followed by [a-z0-9_]*
 /// (Mirrored from gts/src/gts.rs)
@@ -72,6 +83,18 @@ fn validate_gts_segment(segment_num: usize, segment: &str) -> Result<(), String>
         ));
     }
 
+    // Detect extra name token before version (e.g., vendor.package.namespace.type.extra.v1)
+    if tokens.len() == 6
+        && !tokens[4].starts_with('v')
+        && tokens[5].starts_with('v')
+        && is_valid_segment_token(tokens[4])
+    {
+        return Err(format!(
+            "Segment #{segment_num}: Too many name tokens before version (got 5, expected 4). \
+             Expected format: vendor.package.namespace.type.vMAJOR[.MINOR]"
+        ));
+    }
+
     // Validate first 4 tokens (vendor, package, namespace, type)
     for (i, token) in tokens.iter().take(4).enumerate() {
         if !is_valid_segment_token(token) {
@@ -99,7 +122,7 @@ fn validate_gts_segment(segment_num: usize, segment: &str) -> Result<(), String>
     }
 
     let major_str = &version_token[1..];
-    if major_str.parse::<u32>().is_err() {
+    if parse_u32_exact(major_str).is_none() {
         return Err(format!(
             "Segment #{segment_num}: Major version must be an integer, got '{major_str}'"
         ));
@@ -108,7 +131,7 @@ fn validate_gts_segment(segment_num: usize, segment: &str) -> Result<(), String>
     // Validate optional minor version (index 5)
     if tokens.len() > 5 {
         let minor_str = tokens[5];
-        if minor_str.parse::<u32>().is_err() {
+        if parse_u32_exact(minor_str).is_none() {
             return Err(format!(
                 "Segment #{segment_num}: Minor version must be an integer, got '{minor_str}'"
             ));
